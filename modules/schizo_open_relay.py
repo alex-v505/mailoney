@@ -315,7 +315,7 @@ class SchizoOpenRelay(SMTPServer):
         log_to_hpfeeds("mail", json.dumps(loghpfeeds))
 
 
-def run():
+def module():
     honeypot = SchizoOpenRelay((mailoney.bind_ip, mailoney.bind_port), None)
     print('[*] Mail Relay listening on {}:{}'.format(mailoney.bind_ip, mailoney.bind_port))
     try:
@@ -326,5 +326,5 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    module()
 
