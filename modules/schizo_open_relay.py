@@ -293,38 +293,37 @@ def log_session_info(session_info):
                       f"Commands: {session_info['commands']}"
         log_to_file(mailoney.logpath + "/sessions.log", session_info['ip'], session_info['port'], log_message)
 
-
-class SchizoOpenRelay(SMTPServer):
-
-    def process_message(self, peer, mailfrom, rcpttos, data, mail_options=None, rcpt_options=None):
-        log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '')
-        log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '*' * 50)
-        log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail from: {0}'.format(mailfrom))
-        log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail to: {0}'.format(", ".join(rcpttos)))
-        log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Data:')
-        log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], data)
-
-        loghpfeeds = {}
-        loghpfeeds['ServerName'] = mailoney.srvname
-        loghpfeeds['Timestamp'] = format(time.time())
-        loghpfeeds['SrcIP'] = peer[0]
-        loghpfeeds['SrcPort'] = peer[1]
-        loghpfeeds['MailFrom'] = mailfrom
-        loghpfeeds['MailTo'] = format(", ".join(rcpttos))
-        loghpfeeds['Data'] = data
-        log_to_hpfeeds("mail", json.dumps(loghpfeeds))
-
-
 def module():
-    honeypot = SchizoOpenRelay((mailoney.bind_ip, mailoney.bind_port), None)
-    print('[*] Mail Relay listening on {}:{}'.format(mailoney.bind_ip, mailoney.bind_port))
-    try:
-        asyncore.loop()
-        print("exiting for some unknown reason")
-    except KeyboardInterrupt:
-        print('Detected interruption, terminating...')
+    
+    class SchizoOpenRelay(SMTPServer):
+    
+        def process_message(self, peer, mailfrom, rcpttos, data, mail_options=None, rcpt_options=None):
+            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '')
+            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '*' * 50)
+            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail from: {0}'.format(mailfrom))
+            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail to: {0}'.format(", ".join(rcpttos)))
+            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Data:')
+            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], data)
+    
+            loghpfeeds = {}
+            loghpfeeds['ServerName'] = mailoney.srvname
+            loghpfeeds['Timestamp'] = format(time.time())
+            loghpfeeds['SrcIP'] = peer[0]
+            loghpfeeds['SrcPort'] = peer[1]
+            loghpfeeds['MailFrom'] = mailfrom
+            loghpfeeds['MailTo'] = format(", ".join(rcpttos))
+            loghpfeeds['Data'] = data
+            log_to_hpfeeds("mail", json.dumps(loghpfeeds))
 
 
-if __name__ == "__main__":
-    module()
+    def run():
+        honeypot = SchizoOpenRelay((mailoney.bind_ip, mailoney.bind_port), None)
+        print('[*] Mail Relay listening on {}:{}'.format(mailoney.bind_ip, mailoney.bind_port))
+        try:
+            asyncore.loop()
+            print("exiting for some unknown reason")
+        except KeyboardInterrupt:
+            print('Detected interruption, terminating...')
+
+    run()
 
