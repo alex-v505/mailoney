@@ -116,12 +116,10 @@ class SMTPChannel(asynchat.async_chat):
 
     # Implementation of base class abstract method
     def found_terminator(self):
-
         line = EMPTYSTRING.join(self.__line).decode()
         log_to_file(mailoney.logpath+"/commands.log", self.__addr[0], self.__addr[1], string_escape(line))
-        log_to_hpfeeds("commands",  json.dumps({ "Timestamp":format(time.time()), "ServerName": self.__fqdn, "SrcIP": self.__addr[0], "SrcPort": self.__addr[1],"Commmand" : string_escape(line)}))
+        log_to_hpfeeds("commands", json.dumps({"Timestamp": format(time.time()), "ServerName": self.__fqdn, "SrcIP": self.__addr[0], "SrcPort": self.__addr[1], "Commmand": string_escape(line)}))
 
-        #print(>> DEBUGSTREAM, 'Data:', repr(line))
         self.__line = []
         if self.__state == self.COMMAND:
             if not line:
@@ -141,10 +139,7 @@ class SMTPChannel(asynchat.async_chat):
                 return
             method(arg)
             return
-        else:
-            if self.__state != self.DATA:
-                self.push('451 Internal confusion')
-                return
+        elif self.__state == self.DATA:
             # Remove extraneous carriage returns and de-transparency according
             # to RFC 821, Section 4.5.2.
             data = []
@@ -157,12 +152,15 @@ class SMTPChannel(asynchat.async_chat):
             status = self.__server.process_message(self.__peer, self.__mailfrom, self.__rcpttos, self.__data)
             self.__rcpttos = []
             self.__mailfrom = None
+            self.__data = ''
             self.__state = self.COMMAND
             self.set_terminator('\r\n')
             if not status:
                 self.push('250 Ok')
             else:
                 self.push(status)
+        else:
+            self.push('451 Internal confusion')
 
     # SMTP and ESMTP commands
     def smtp_HELO(self, arg):
