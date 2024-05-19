@@ -72,7 +72,7 @@ class SMTPChannel(asynchat.async_chat):
         self.__mailfrom = None
         self.__rcpttos = []
         self.__data = ''
-        self.__session_log = []
+        self.__session_log = []  # Log for the entire session
         from mailoney import srvname
         self.__fqdn = srvname
         try:
@@ -103,7 +103,7 @@ class SMTPChannel(asynchat.async_chat):
 
     def found_terminator(self):
         line = EMPTYSTRING.join(self.__line).decode()
-        self.__session_log.append(line)
+        self.__session_log.append(line)  # Add each line to the session log
 
         log_entry = {
             "timestamp": datetime.utcnow().isoformat() + 'Z',
@@ -146,7 +146,7 @@ class SMTPChannel(asynchat.async_chat):
                 else:
                     data.append(text)
             self.__data = NEWLINE.join(data)
-            self.__session_log.append(self.__data)
+            self.__session_log.append(self.__data)  # Add data to the session log
             status = self.__server.process_message(self.__peer, self.__mailfrom, self.__rcpttos, self.__data)
             self.__rcpttos = []
             self.__mailfrom = None
@@ -165,7 +165,7 @@ class SMTPChannel(asynchat.async_chat):
             }
 
             log_to_file(mailoney.logpath + "/sessions.log", log_entry)
-            self.__session_log = []
+            self.__session_log = []  # Reset session log for the next session
 
 class SMTPServer(asyncore.dispatcher):
     def __init__(self, localaddr, remoteaddr):
@@ -221,4 +221,3 @@ def module():
             print('Detected interruption, terminating...')
 
     run()
-
