@@ -126,6 +126,7 @@ class SMTPChannel(asynchat.async_chat):
             status = self.__server.process_message(self.__peer, self.__mailfrom, self.__rcpttos, self.__data)
             self.__rcpttos = []
             self.__mailfrom = None
+            self.__data = ''  # Reset data after processing
             if not status:
                 self.push('250 Ok')
             else:
@@ -241,10 +242,27 @@ class SMTPChannel(asynchat.async_chat):
             self.push('501 Syntax: DATA')
             return
         self.__state = self.DATA
-        self.set_terminator('\r\n.\r\n')
+        self.set_terminator(b'\r\n.\r\n')  # Set the terminator for DATA
         self.push('354 End data with <CR><LF>.<CR><LF>')
 
-class SMTPServer(asyncore.dispatcher):
+        # Clear previous data
+        self.__data = ''
+
+    def collect_incoming_data_data(self, data):
+        # Collect data for DATA command
+        self.__data += data
+
+    def found_terminator_data(self):
+        # Process the collected data
+        log_to_file(mailoney.logpath + "/mail.log", self.__addr[0], self.__addr[1], self.__data)
+        log_to_hpfeeds("mail", json.dumps({"Timestamp": format(time.time()), "ServerName": self.__fqdn, "SrcIP": self.__addr[0], "SrcPort": self.__addr[1], "MailFrom": self.__mailfrom, "MailTo": ", ".join(self.__rcpttos), "Data": self.__data}))
+
+        # Reset state and data
+        self.__state = self.COMMAND
+        self.set_terminator(b'\r\n')
+        self.push('250 Ok: queued')
+
+ class SMTPServer(asyncore.dispatcher):
     def __init__(self, localaddr, remoteaddr):
         self._localaddr = localaddr
         self._remoteaddr = remoteaddr
@@ -266,40 +284,38 @@ class SMTPServer(asyncore.dispatcher):
             conn, addr = pair
             channel = SMTPChannel(self, conn, addr)
 
-    def handle_close(self):
-        self.close()
+   def handle_close(self):
+       self.close()
 
-    def process_message(self, peer, mailfrom, rcpttos, data, mail_options=None,rcpt_options=None):
-        raise NotImplementedError
+   def process_message(self, peer, mailfrom, rcpttos, data, mail_options=None,rcpt_options=None):
+       raise NotImplementedError
 
 def module():
-    class SchizoOpenRelay(SMTPServer):
-        def process_message(self, peer, mailfrom, rcpttos, data, mail_options=None,rcpt_options=None):
-            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '')
-            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '*' * 50)
-            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail from: {0}'.format(mailfrom))
-            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail to: {0}'.format(", ".join(rcpttos)))
-            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Data:')
-            log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], data)
+   class SchizoOpenRelay(SMTPServer):
+       def process_message(self, peer, mailfrom, rcpttos, data, mail_options=None,rcpt_options=None):
+           log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '')
+           log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], '*' * 50)
+           log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail from: {0}'.format(mailfrom))
+           log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Mail to: {0}'.format(", ".join(rcpttos)))
+           log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], 'Data:')
+           log_to_file(mailoney.logpath+"/mail.log", peer[0], peer[1], data)
 
-            loghpfeeds = {}
-            loghpfeeds['ServerName'] = mailoney.srvname
-            loghpfeeds['Timestamp'] = format(time.time())
-            loghpfeeds['SrcIP'] = peer[0]
-            loghpfeeds['SrcPort'] = peer[1]
-            loghpfeeds['MailFrom'] = mailfrom
-            loghpfeeds['MailTo'] = format(", ".join(rcpttos))
-            loghpfeeds['Data'] = data
-            log_to_hpfeeds("mail", json.dumps(loghpfeeds))
+           loghpfeeds = {}
+           loghpfeeds['ServerName'] = mailoney.srvname
+           loghpfeeds['Timestamp'] = format(time.time())
+           loghpfeeds['SrcIP'] = peer[0]
+           loghpfeeds['SrcPort'] = peer[1]
+           loghpfeeds['MailFrom'] = mailfrom
+           loghpfeeds['MailTo'] = format(", ".join(rcpttos))
+           loghpfeeds['Data'] = data
+           log_to_hpfeeds("mail", json.dumps(loghpfeeds))
 
-    def run():
-        honeypot = SchizoOpenRelay((mailoney.bind_ip, mailoney.bind_port), None)
-        print('[*] Mail Relay listening on {}:{}'.format(mailoney.bind_ip, mailoney.bind_port))
-        try:
-            asyncore.loop()
-            print("exiting for some unknown reason")
-        except KeyboardInterrupt:
-            print('Detected interruption, terminating...')
-    run()
-
-
+   def run():
+       honeypot = SchizoOpenRelay((mailoney.bind_ip, mailoney.bind_port), None)
+       print('[*] Mail Relay listening on {}:{}'.format(mailoney.bind_ip, mailoney.bind_port))
+       try:
+           asyncore.loop()
+           print("exiting for some unknown reason")
+       except KeyboardInterrupt:
+           print('Detected interruption, terminating...')
+   run()
