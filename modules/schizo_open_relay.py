@@ -145,7 +145,7 @@ class SMTPChannel(asynchat.async_chat):
             if i < 0:
                 command = line.upper()
                 arg = None
-            else:
+                        else:
                 command = line[:i].upper()
                 arg = line[i+1:].strip()
             method = getattr(self, 'smtp_' + command, None)
@@ -155,6 +155,84 @@ class SMTPChannel(asynchat.async_chat):
             method(arg)
             return
 
+    def smtp_HELO(self, arg):
+        if not arg:
+            self.push('501 Syntax: HELO hostname')
+            return
+        if self.__greeting:
+            self.push('503 Duplicate HELO/EHLO')
+        else:
+            self.__greeting = arg
+            self.push('250 %s' % self.__fqdn)
+
+    def smtp_EHLO(self, arg):
+        if not arg:
+            self.push('501 Syntax: EHLO hostname')
+            return
+        if self.__greeting:
+            self.push('503 Duplicate HELO/EHLO')
+        else:
+            self.__greeting = arg
+            self.push('250-{0} Hello {1} [{2}]'.format(self.__fqdn, arg, self.__addr[0]))
+            self.push('250-SIZE 52428800')
+            self.push('250 AUTH LOGIN PLAIN')
+
+    def smtp_NOOP(self, arg):
+        if arg:
+            self.push('501 Syntax: NOOP')
+        else:
+            self.push('250 Ok')
+
+    def smtp_QUIT(self, arg):
+        self.push('221 Bye')
+        self.close_when_done()
+
+    def smtp_AUTH(self, arg):
+        self.push('235 Authentication succeeded')
+
+    def __getaddr(self, keyword, arg):
+        address = None
+        keylen = len(keyword)
+        if arg[:keylen].upper() == keyword:
+            address = arg[keylen:].strip()
+            if not address:
+                pass
+            elif address[0] == '<' and address[-1] == '>' and address != '<>':
+                address = address[1:-1]
+        return address
+
+    def smtp_MAIL(self, arg):
+        address = self.__getaddr('FROM:', arg) if arg else None
+        if not address:
+            self.push('501 Syntax: MAIL FROM:<address>')
+            return
+        if self.__mailfrom:
+            self.push('503 Error: nested MAIL command')
+            return
+        self.__mailfrom = address
+        self.push('250 Ok')
+
+    def smtp_RCPT(self, arg):
+        if not self.__mailfrom:
+            self.push('503 Error: need MAIL command')
+            return
+        address = self.__getaddr('TO:', arg) if arg else None
+        if not address:
+            self.push('501 Syntax: RCPT TO: <address>')
+            return
+        self.__rcpttos.append(address)
+        self.push('250 Ok')
+
+    def smtp_RSET(self, arg):
+        if arg:
+            self.push('501 Syntax: RSET')
+            return
+        self.__mailfrom = None
+        self.__rcpttos = []
+        self.__data = ''
+        self.__state = self.COMMAND
+        self.push('250 Ok')
+
     def smtp_DATA(self, arg):
         if not self.__rcpttos:
             self.push('503 Error: need RCPT command')
@@ -163,6 +241,7 @@ class SMTPChannel(asynchat.async_chat):
             self.push('501 Syntax: DATA')
             return
         self.__state = self.DATA
+        self.set_terminator('\r\n.\r\n')
         self.push('354 End data with <CR><LF>.<CR><LF>')
 
 class SMTPServer(asyncore.dispatcher):
